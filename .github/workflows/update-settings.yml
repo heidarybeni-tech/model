@@ -1,0 +1,95 @@
+name: Update Settings
+
+on:
+  workflow_dispatch:
+    inputs:
+      settings_json:
+        description: 'تنظیمات جدید (JSON)'
+        required: true
+        type: string
+  
+  # یا می‌توانید از push trigger استفاده کنید
+  # push:
+  #   paths:
+  #     - 'settings.json'
+
+jobs:
+  update-settings:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          # اگر نیاز به dependency خاصی دارید
+          # pip install -r requirements.txt
+          echo "No dependencies needed"
+      
+      - name: Update settings file
+        run: |
+          # دریافت JSON از input یا از فایل
+          if [ -n "${{ github.event.inputs.settings_json }}" ]; then
+            echo '${{ github.event.inputs.settings_json }}' > settings_temp.json
+          elif [ -f settings.json ]; then
+            cp settings.json settings_temp.json
+          else
+            echo "❌ هیچ فایل تنظیماتی یافت نشد"
+            exit 1
+          fi
+          
+          # رمزنگاری و ایجاد فایل aqsettings.txt
+          python3 settings_manager.py encrypt settings_temp.json aqsettings.txt
+          
+          # حذف فایل موقت
+          rm -f settings_temp.json
+          
+          echo "✓ فایل تنظیمات با موفقیت به‌روزرسانی شد"
+      
+      - name: Verify settings file
+        run: |
+          if [ -f aqsettings.txt ]; then
+            echo "✓ فایل aqsettings.txt ایجاد شد"
+            echo "محتوا:"
+            head -c 100 aqsettings.txt
+            echo ""
+            
+            # رمزگشایی برای تست
+            echo "تست رمزگشایی:"
+            python3 settings_manager.py decrypt aqsettings.txt
+          else
+            echo "❌ فایل ایجاد نشد"
+            exit 1
+          fi
+      
+      - name: Commit and push
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "GitHub Actions"
+          
+          if [ -f aqsettings.txt ]; then
+            git add aqsettings.txt
+            
+            if git diff --staged --quiet; then
+              echo "تغییری برای commit وجود ندارد"
+            else
+              git commit -m "Update settings file [automated]"
+              git push
+              echo "✓ تغییرات commit و push شد"
+            fi
+          fi
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aqsettings
+          path: aqsettings.txt
+          retention-days: 30
